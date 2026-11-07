@@ -354,6 +354,27 @@ test(
           String((await Subscription.findById(historicalSubscription._id).lean().exec()).planId),
           String(planId),
         );
+        assert.equal(
+          await deletePlanRecord({
+            adminUser: admin,
+            planId: String(planId),
+            reason: "Permanently remove isolated plan by explicit request",
+            permanentlyDeleteReferencedPlan: true,
+          }),
+          "deleted",
+        );
+        assert.equal(await Plan.exists({ _id: planId }), null);
+        const preservedSubscription = await Subscription.findById(
+          historicalSubscription._id,
+        )
+          .lean()
+          .exec();
+        assert.equal(String(preservedSubscription.planId), String(planId));
+        assert.equal(preservedSubscription.planNameSnapshot, updatedPlan.name);
+        assert.equal(
+          preservedSubscription.baseMonthlyPriceSnapshot,
+          updatedPlan.baseMonthlyPrice,
+        );
 
         const unusedPlanId = await savePlanRecord({
           adminUser: admin,
@@ -1027,6 +1048,7 @@ test(
 
     await t.test("counts unique members with current active or paid partial subscriptions", async () => {
       const suffix = randomUUID();
+      const deletedMemberReference = `ANON-DASHBOARD-${suffix}`;
       const users = await User.create([
         {
           clerkUserId: `it-dashboard-active-${suffix}`,
@@ -1086,15 +1108,26 @@ test(
           subscriptionData(users[3]._id, "ACTIVE"),
           subscriptionData(users[3]._id, "PARTIAL"),
           subscriptionData(users[4]._id, "ACTIVE"),
+          {
+            ...subscriptionData(null, "ACTIVE"),
+            memberReference: deletedMemberReference,
+            memberDeletedAt: now,
+          },
         ]);
         const overview = await getAdminOverview();
         assert.equal(overview.members, 6);
         assert.equal(overview.activeMembers, 4);
         assert.equal(overview.inactiveMembers, 2);
-        assert.equal(overview.activeSubscriptions, 9);
+        assert.equal(overview.totalSubscriptions, 10);
+        assert.equal(overview.activeSubscriptions, 8);
         assert.equal(overview.expiredSubscriptions, 2);
       } finally {
-        await Subscription.deleteMany({ userId: { $in: users.map(({ _id }) => _id) } });
+        await Subscription.deleteMany({
+          $or: [
+            { userId: { $in: users.map(({ _id }) => _id) } },
+            { memberReference: deletedMemberReference },
+          ],
+        });
         await User.deleteMany({ _id: { $in: users.map(({ _id }) => _id) } });
       }
     });
@@ -1602,6 +1635,29 @@ test(
         record.memberReference === memberReference &&
         record.memberDeletedAt instanceof Date,
       ));
+      const subscriptionsBeforeById = new Map(
+        subscriptionsBefore.map((record) => [String(record._id), record]),
+      );
+      const cancelledSubscriptionCount = subscriptionsBefore.filter(
+        (record) =>
+          ["PENDING", "PARTIAL", "ACTIVE"].includes(record.status) &&
+          record.endDate > retainedSubscriptions[0].memberDeletedAt,
+      ).length;
+      const expiredSubscriptionCount = subscriptionsBefore.filter(
+        (record) =>
+          ["PENDING", "PARTIAL", "ACTIVE"].includes(record.status) &&
+          record.endDate <= retainedSubscriptions[0].memberDeletedAt,
+      ).length;
+      assert.ok(retainedSubscriptions.every((record) => {
+        const previous = subscriptionsBeforeById.get(String(record._id));
+        const expectedStatus =
+          !["PENDING", "PARTIAL", "ACTIVE"].includes(previous.status)
+            ? previous.status
+            : previous.endDate <= record.memberDeletedAt
+              ? "EXPIRED"
+              : "CANCELLED";
+        return record.status === expectedStatus;
+      }));
       assert.ok(retainedPayments.every((record) =>
         record.userId === null &&
         record.memberReference === memberReference &&
@@ -1660,6 +1716,8 @@ test(
       assert.equal(deletionAudit.after.mongoProfileDeleted, true);
       assert.equal(deletionAudit.after.clerkAccountDeleted, true);
       assert.equal(deletionAudit.after.subscriptionsAnonymized, subscriptionsBefore.length);
+      assert.equal(deletionAudit.after.subscriptionsCancelled, cancelledSubscriptionCount);
+      assert.equal(deletionAudit.after.subscriptionsExpired, expiredSubscriptionCount);
       assert.equal(deletionAudit.after.paymentsAnonymized, paymentsBefore.length);
       assert.ok(deletionAudit.clerkUserIdHash);
       assert.equal(deletionAudit.clerkUserIdHash.includes(member.clerkUserId), false);

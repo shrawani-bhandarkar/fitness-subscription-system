@@ -77,7 +77,12 @@ export async function savePlanRecord({ adminUser, planId, data, reason }) {
   return savedPlanId;
 }
 
-export async function deletePlanRecord({ adminUser, planId, reason }) {
+export async function deletePlanRecord({
+  adminUser,
+  planId,
+  reason,
+  permanentlyDeleteReferencedPlan = false,
+}) {
   assertAdministrator(adminUser);
   await connectToDatabase();
   const session = await mongoose.startSession();
@@ -92,11 +97,11 @@ export async function deletePlanRecord({ adminUser, planId, reason }) {
         name: plan.name,
         isActive: plan.isActive,
       };
-      const hasSubscriptions = await Subscription.exists({ planId })
+      const linkedSubscriptionCount = await Subscription.countDocuments({ planId })
         .session(session)
         .exec();
 
-      if (hasSubscriptions) {
+      if (linkedSubscriptionCount > 0 && !permanentlyDeleteReferencedPlan) {
         plan.isActive = false;
         await plan.save({ session });
         await AdminAudit.create(
@@ -126,7 +131,15 @@ export async function deletePlanRecord({ adminUser, planId, reason }) {
             entityId: plan._id,
             action: "PLAN_DELETED",
             reason,
-            before: { name: plan.name },
+            before: {
+              name: plan.name,
+              linkedSubscriptionCount,
+            },
+            after: {
+              deleted: true,
+              linkedSubscriptionReferencesPreserved:
+                linkedSubscriptionCount > 0,
+            },
           },
         ],
         { session },

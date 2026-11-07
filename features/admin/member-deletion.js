@@ -188,10 +188,49 @@ async function finalizeMemberDeletion({
             .exec();
       const memberReference = `ANON-${randomUUID().toUpperCase()}`;
       const deletedAt = new Date();
+      const activeStatuses = ["PENDING", "PARTIAL", "ACTIVE"];
+      const subscriptionsBeforeDeletion = await Subscription.find({
+        userId: member._id,
+      })
+        .select("status endDate")
+        .session(session)
+        .lean()
+        .exec();
+      const subscriptionsCancelled = subscriptionsBeforeDeletion.filter(
+        (subscription) =>
+          activeStatuses.includes(subscription.status) &&
+          subscription.endDate > deletedAt,
+      ).length;
+      const subscriptionsExpired = subscriptionsBeforeDeletion.filter(
+        (subscription) =>
+          activeStatuses.includes(subscription.status) &&
+          subscription.endDate <= deletedAt,
+      ).length;
       const subscriptionResult = await Subscription.updateMany(
         { userId: member._id },
-        { $set: { userId: null, memberReference, memberDeletedAt: deletedAt } },
-        { session },
+        [
+          {
+            $set: {
+              userId: null,
+              memberReference,
+              memberDeletedAt: deletedAt,
+              status: {
+                $cond: [
+                  { $in: ["$status", activeStatuses] },
+                  {
+                    $cond: [
+                      { $lte: ["$endDate", deletedAt] },
+                      "EXPIRED",
+                      "CANCELLED",
+                    ],
+                  },
+                  "$status",
+                ],
+              },
+            },
+          },
+        ],
+        { session, updatePipeline: true },
       ).exec();
       const paymentResult = await Payment.updateMany(
         { userId: member._id },
@@ -239,6 +278,8 @@ async function finalizeMemberDeletion({
         mongoProfileDeleted: true,
         personalDataErased: true,
         subscriptionsAnonymized: subscriptionResult.modifiedCount,
+        subscriptionsCancelled,
+        subscriptionsExpired,
         paymentsAnonymized: paymentResult.modifiedCount,
       };
       if (audit) {
@@ -266,6 +307,8 @@ async function finalizeMemberDeletion({
       result = {
         status: "deleted",
         subscriptionsAnonymized: subscriptionResult.modifiedCount,
+        subscriptionsCancelled,
+        subscriptionsExpired,
         paymentsAnonymized: paymentResult.modifiedCount,
       };
     });

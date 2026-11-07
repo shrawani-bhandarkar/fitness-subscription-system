@@ -7,7 +7,10 @@ const isProtectedRoute = createRouteMatcher([
   "/billing(.*)",
   "/admin(.*)",
 ]);
-const isSignInRoute = createRouteMatcher(["/sign-in(.*)"]);
+const isAuthenticationRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+]);
 
 export default clerkMiddleware(
   async (auth, request) => {
@@ -16,7 +19,7 @@ export default clerkMiddleware(
       return;
     }
 
-    if (isSignInRoute(request)) {
+    if (isAuthenticationRoute(request)) {
       const { userId } = await auth();
 
       if (userId) {

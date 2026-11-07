@@ -62,8 +62,20 @@ export function PlanEditor({ plan }) {
       </form>
       {plan && (
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <ConfirmForm action={deletePlan} message={`Delete ${plan.name}? If subscriptions use this plan, it will be deactivated instead so their history remains intact.`}>
+          <ConfirmForm
+            action={deletePlan}
+            message={`Delete ${plan.name}? Plans with subscriptions are normally archived. If you checked the permanent deletion option, linked subscriptions will retain a reference to a plan that no longer exists.`}
+          >
             <input type="hidden" name="planId" value={plan._id.toString()} />
+            <label className="mb-3 flex items-start gap-2 text-xs leading-5 text-red-800">
+              <input
+                type="checkbox"
+                name="permanentlyDeleteReferencedPlan"
+                className="mt-1"
+              />
+              Permanently delete even if subscriptions reference this plan. Linked
+              subscription history remains, but its plan reference will no longer resolve.
+            </label>
             <div className="flex flex-wrap items-end gap-3">
               <Field label="Deletion reason" name="reason" minLength="4" maxLength="500" required />
               <button className="min-h-10 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-700 hover:bg-red-50">Delete plan</button>

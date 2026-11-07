@@ -21,13 +21,23 @@ function normalizePage(page) {
 export async function getAdminOverview() {
   await connectToDatabase();
   const now = new Date();
+  const memberIds = (
+    await User.find({ role: { $in: ["MEMBER", "USER"] } })
+      .select("_id")
+      .lean()
+      .exec()
+  ).map(({ _id }) => _id);
+  const operationalSubscriptionFilter = {
+    userId: { $in: memberIds },
+    memberDeletedAt: null,
+  };
   const currentMembershipFilter = {
+    ...operationalSubscriptionFilter,
     status: { $in: CURRENT_MEMBERSHIP_STATUSES },
     startDate: { $lte: now },
     endDate: { $gt: now },
   };
   const [
-    members,
     activeMemberIds,
     totalSubscriptions,
     activeSubscriptions,
@@ -40,11 +50,11 @@ export async function getAdminOverview() {
     recentMembers,
   ] =
     await Promise.all([
-      User.countDocuments({ role: { $in: ["MEMBER", "USER"] } }),
       Subscription.distinct("userId", currentMembershipFilter).exec(),
-      Subscription.countDocuments({}),
+      Subscription.countDocuments(operationalSubscriptionFilter),
       Subscription.countDocuments(currentMembershipFilter),
       Subscription.countDocuments({
+        ...operationalSubscriptionFilter,
         $or: [
           { status: "EXPIRED" },
           {
@@ -59,11 +69,22 @@ export async function getAdminOverview() {
         { $group: { _id: null, total: { $sum: "$amount" } } },
       ]),
       Payment.aggregate([
-        { $match: { paymentStatus: "PENDING" } },
+        {
+          $match: {
+            userId: { $in: memberIds },
+            memberDeletedAt: null,
+            paymentStatus: "PENDING",
+          },
+        },
         { $group: { _id: null, total: { $sum: "$amount" } } },
       ]),
       Subscription.aggregate([
-        { $match: { status: { $in: ["PARTIAL", "PENDING"] } } },
+        {
+          $match: {
+            ...operationalSubscriptionFilter,
+            status: { $in: ["PARTIAL", "PENDING"] },
+          },
+        },
         { $group: { _id: null, total: { $sum: "$remainingBalance" } } },
       ]),
       Payment.find({})
@@ -83,6 +104,7 @@ export async function getAdminOverview() {
         .lean()
         .exec(),
     ]);
+  const members = memberIds.length;
   const activeMembers = await User.countDocuments({
     role: { $in: ["MEMBER", "USER"] },
     _id: { $in: activeMemberIds },

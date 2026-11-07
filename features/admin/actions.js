@@ -113,6 +113,8 @@ export async function deletePlan(formData) {
     adminUser: admin,
     planId: id,
     reason: reason.data,
+    permanentlyDeleteReferencedPlan:
+      formData.get("permanentlyDeleteReferencedPlan") === "on",
   });
   const outcome = {
     deleted: "success=plan-deleted",

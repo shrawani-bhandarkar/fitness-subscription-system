@@ -30,29 +30,6 @@ export default async function AdminDashboardPage() {
     getAdminOverview(),
     getRecentAdminAudits(),
   ]);
-  const otherSubscriptions = Math.max(
-    0,
-    overview.totalSubscriptions -
-      overview.activeSubscriptions -
-      overview.expiredSubscriptions,
-  );
-  const membershipBreakdown = [
-    {
-      label: "Current (active or partial)",
-      count: overview.activeSubscriptions,
-      color: "bg-emerald-700",
-    },
-    {
-      label: "Expired",
-      count: overview.expiredSubscriptions,
-      color: "bg-amber-500",
-    },
-    {
-      label: "Other statuses",
-      count: otherSubscriptions,
-      color: "bg-slate-400",
-    },
-  ];
 
   return (
     <AdminShell user={user} activePath="/admin/dashboard">
@@ -70,59 +47,6 @@ export default async function AdminDashboardPage() {
         <AdminStat label="Collected" value={formatINR(overview.collected)} note="Successful records, including demo payments" icon={CircleDollarSign} tone="green" />
         <AdminStat label="Outstanding / pending" value={formatINR(overview.pendingPayments)} note="Pending payment records and partial subscription balances" icon={Clock3} tone="amber" />
         <AdminStat label="Plans" value={overview.planCount.toLocaleString("en-IN")} icon={Layers3} />
-      </section>
-
-      <section
-        aria-labelledby="membership-breakdown-heading"
-        className="mt-7 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-950/[0.03] sm:p-6"
-      >
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 id="membership-breakdown-heading" className="font-semibold text-slate-950">
-              Membership breakdown
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Current, expired, and remaining status counts from subscription records.
-            </p>
-          </div>
-          <p className="text-sm font-semibold text-slate-700">
-            {overview.totalSubscriptions.toLocaleString("en-IN")} total
-          </p>
-        </div>
-        {overview.totalSubscriptions === 0 ? (
-          <p className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
-            Membership status data will appear here when subscriptions are recorded.
-          </p>
-        ) : (
-          <div className="mt-5 space-y-4">
-            {membershipBreakdown.map(({ label, count, color }) => {
-              const percentage = (count / overview.totalSubscriptions) * 100;
-              return (
-                <div key={label} className="grid gap-2 sm:grid-cols-[12rem_minmax(0,1fr)_3rem] sm:items-center sm:gap-4">
-                  <div className="flex items-center justify-between gap-3 sm:block">
-                    <p className="text-sm font-medium text-slate-700">{label}</p>
-                    <p className="text-sm font-semibold text-slate-900 sm:hidden">
-                      {count.toLocaleString("en-IN")}
-                    </p>
-                  </div>
-                  <div
-                    className="h-2.5 overflow-hidden rounded-full bg-slate-100"
-                    role="meter"
-                    aria-label={label}
-                    aria-valuemin={0}
-                    aria-valuemax={overview.totalSubscriptions}
-                    aria-valuenow={count}
-                  >
-                    <div className={`h-full rounded-full ${color}`} style={{ width: `${percentage}%` }} />
-                  </div>
-                  <p className="hidden text-right text-sm font-semibold text-slate-900 sm:block">
-                    {count.toLocaleString("en-IN")}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </section>
 
       <section className="mt-9 grid gap-6 xl:grid-cols-2">
