@@ -47,17 +47,17 @@ export default async function Home() {
             </span>
             FITNESS CLUB
           </Link>
-          <nav aria-label="Main navigation" className="flex items-center gap-1 text-sm font-medium sm:gap-3">
-            <Link href="/about" className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-950">
+          <nav aria-label="Main navigation" className="flex items-center gap-0.5 text-xs font-medium sm:gap-3 sm:text-sm">
+            <Link href="/about" className="hidden rounded-lg px-2 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-950 sm:inline-flex sm:px-3">
               About
             </Link>
-            <Link href="/plans" className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-950">
+            <Link href="/plans" className="rounded-lg px-2 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-950 sm:px-3">
               Plans
             </Link>
-            <Link href="/sign-in" className="rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">
+            <Link href="/sign-in" className="rounded-lg px-2 py-2 text-slate-700 hover:bg-slate-50 sm:px-3">
               Log in
             </Link>
-            <Link href="/sign-up" className="rounded-xl bg-emerald-700 px-3 py-2 text-white hover:bg-emerald-800 sm:px-4">
+            <Link href="/sign-up" className="rounded-xl bg-emerald-800 px-3 py-2 text-white hover:bg-emerald-900 sm:px-4">
               Join now
             </Link>
           </nav>

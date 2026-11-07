@@ -74,10 +74,10 @@ export default async function BillingPage({ searchParams }) {
         : null;
 
   return (
-    <div className="min-h-screen bg-slate-50 lg:flex">
+    <div className="min-h-screen bg-[#f3f6f4] lg:flex">
       <MemberSidebar user={user} activePath="/billing" />
       <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:py-10">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-10">
           <div>
             <p className="text-sm font-semibold text-emerald-700">
               ACCOUNT FINANCES

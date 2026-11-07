@@ -130,7 +130,7 @@ export default async function PaymentReceiptPage({ params }) {
   return isAdmin ? (
     <AdminShell user={user} activePath="/admin/transactions">{content}</AdminShell>
   ) : (
-    <div className="min-h-screen bg-slate-50 lg:flex">
+    <div className="min-h-screen bg-[#f3f6f4] lg:flex">
       <MemberSidebar user={user} activePath="/billing" />
       <main className="min-w-0 flex-1">{content}</main>
     </div>

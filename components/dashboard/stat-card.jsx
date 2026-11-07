@@ -7,13 +7,13 @@ export function StatCard({
 }) {
   const iconTone =
     tone === "green"
-      ? "bg-emerald-50 text-emerald-700"
+      ? "bg-lime-100 text-emerald-900"
       : tone === "amber"
         ? "bg-amber-50 text-amber-700"
         : "bg-slate-100 text-slate-700";
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-950/[0.02]">
+    <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-950/[0.03] transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>

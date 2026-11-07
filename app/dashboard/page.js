@@ -48,10 +48,10 @@ export default async function DashboardPage() {
   const firstName = user.name.split(/\s+/)[0] || user.name;
 
   return (
-    <div className="min-h-screen bg-slate-50 lg:flex">
+    <div className="min-h-screen bg-[#f3f6f4] lg:flex">
       <MemberSidebar user={user} activePath="/dashboard" />
       <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:py-10">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-10">
           <div className="flex flex-wrap items-end justify-between gap-5">
             <div>
               <p className="text-sm font-semibold text-emerald-700">

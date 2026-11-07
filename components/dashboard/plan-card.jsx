@@ -12,8 +12,8 @@ export function PlanCard({ plan }) {
     <article
       className={`flex h-full flex-col rounded-2xl border bg-white p-5 shadow-sm shadow-slate-950/[0.02] ${
         plan.isPopular
-          ? "border-emerald-500 ring-2 ring-emerald-100"
-          : "border-slate-200"
+          ? "border-emerald-600 ring-2 ring-lime-100"
+          : "border-slate-200/80"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -21,7 +21,7 @@ export function PlanCard({ plan }) {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold text-slate-950">{plan.name}</h3>
             {plan.isPopular && (
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-emerald-800 uppercase">
+              <span className="rounded-full bg-lime-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-emerald-900 uppercase">
                 Recommended
               </span>
             )}

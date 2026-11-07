@@ -39,7 +39,7 @@ export function SubscriptionCard({ subscription }) {
   const expiryNotice = getSubscriptionExpiryNotice(subscription);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/[0.02] sm:p-7">
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-950/[0.03] sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-[0.14em] text-slate-500 uppercase">

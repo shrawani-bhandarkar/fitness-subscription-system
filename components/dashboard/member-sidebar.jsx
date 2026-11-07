@@ -8,7 +8,9 @@ import {
   Settings,
   UserRound,
 } from "lucide-react";
-import { UserMenu } from "@/components/auth/user-menu";
+import { UserMenu } from "../auth/user-menu";
+import { NotificationBell } from "./notification-bell.jsx";
+import { getMemberNotifications } from "../../features/notifications/service.js";
 
 const navigation = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -19,15 +21,17 @@ const navigation = [
   { href: "/account", label: "Account settings", icon: Settings },
 ];
 
-export function MemberSidebar({ user, activePath }) {
+export async function MemberSidebar({ user, activePath }) {
+  const notifications = await getMemberNotifications(user._id, { limit: 8 });
+
   return (
     <>
-      <aside className="hidden min-h-screen w-64 shrink-0 border-r border-slate-200 bg-white px-5 py-7 lg:flex lg:flex-col">
+      <aside className="hidden min-h-screen w-64 shrink-0 overflow-visible border-r border-white/10 bg-[#111b17] px-5 py-7 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-y-auto">
         <Link
           href="/dashboard"
-          className="flex items-center gap-3 px-2 text-sm font-bold tracking-[0.12em] text-slate-950"
+          className="flex items-center gap-3 px-2 text-sm font-bold tracking-[0.12em] text-white"
         >
-          <span className="flex size-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
+          <span className="flex size-9 items-center justify-center rounded-xl bg-lime-300 text-[#17231d]">
             <Dumbbell size={19} aria-hidden="true" />
           </span>
           FITNESS CLUB
@@ -45,8 +49,8 @@ export function MemberSidebar({ user, activePath }) {
                 aria-current={active ? "page" : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                   active
-                    ? "bg-emerald-50 text-emerald-800"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                    ? "bg-lime-300/10 text-lime-200 ring-1 ring-inset ring-lime-200/10"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white"
                 }`}
               >
                 <Icon size={18} aria-hidden="true" />
@@ -57,37 +61,39 @@ export function MemberSidebar({ user, activePath }) {
           {user.role === "ADMIN" && (
             <Link
               href="/admin/dashboard"
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/5 hover:text-white"
             >
               <PanelsTopLeft size={18} aria-hidden="true" />
               Admin
             </Link>
           )}
         </nav>
-        <div className="mt-auto flex items-center gap-3 border-t border-slate-100 pt-5">
+        <div className="mt-auto flex items-center gap-3 border-t border-white/10 pt-5">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-900">
+            <p className="truncate text-sm font-semibold text-white">
               {user.name}
             </p>
-            <p className="truncate text-xs text-slate-500">{user.email}</p>
+            <p className="truncate text-xs text-slate-400">{user.email}</p>
           </div>
+          <NotificationBell notifications={notifications} />
           <UserMenu />
         </div>
       </aside>
 
-      <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+      <div className="relative overflow-visible border-b border-white/10 bg-[#111b17] px-4 py-3 text-white lg:hidden">
         <div className="flex items-center justify-between">
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 text-xs font-bold tracking-[0.1em] text-slate-950"
+            className="flex items-center gap-2 text-xs font-bold tracking-[0.1em] text-white"
           >
-            <Dumbbell size={18} className="text-emerald-700" aria-hidden="true" />
+            <Dumbbell size={18} className="text-lime-300" aria-hidden="true" />
             FITNESS CLUB
           </Link>
           <div className="flex items-center gap-2">
-            <span className="max-w-36 truncate text-xs text-slate-500">
+            <span className="hidden max-w-36 truncate text-xs text-slate-300 sm:block">
               {user.name}
             </span>
+            <NotificationBell notifications={notifications} />
             <UserMenu />
           </div>
         </div>
@@ -99,10 +105,10 @@ export function MemberSidebar({ user, activePath }) {
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
                   active
-                    ? "bg-emerald-50 text-emerald-800"
-                    : "text-slate-600 hover:bg-slate-50"
+                    ? "bg-lime-300/10 text-lime-200"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white"
                 }`}
               >
                 <Icon size={15} aria-hidden="true" />
@@ -113,7 +119,7 @@ export function MemberSidebar({ user, activePath }) {
           {user.role === "ADMIN" && (
             <Link
               href="/admin/dashboard"
-              className="inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/5 hover:text-white"
             >
               <PanelsTopLeft size={15} aria-hidden="true" />
               Admin

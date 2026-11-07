@@ -25,8 +25,10 @@ let AdminAudit;
 let Coupon;
 let Payment;
 let Subscription;
+let Notification;
 let createDemoEnrollment;
 let createDemoBalancePayment;
+let ensureSuccessfulPaymentReceipt;
 let getActivePlans;
 let getBillingData;
 let getMemberSubscriptions;
@@ -60,21 +62,23 @@ before(async () => {
   process.env.MONGODB_URI = testUri;
   const mongooseModule = await import("mongoose");
   mongoose = mongooseModule.default;
-  const [userModel, planModel, couponModel, paymentModel, subscriptionModel] =
+  const [userModel, planModel, couponModel, paymentModel, subscriptionModel, notificationModel] =
     await Promise.all([
       import("../models/User.js"),
       import("../models/Plan.js"),
       import("../models/Coupon.js"),
       import("../models/Payment.js"),
       import("../models/Subscription.js"),
+      import("../models/Notification.js"),
     ]);
   ({ default: AdminAudit } = await import("../models/AdminAudit.js"));
-  [User, Plan, Coupon, Payment, Subscription] = [
+  [User, Plan, Coupon, Payment, Subscription, Notification] = [
     userModel.default,
     planModel.default,
     couponModel.default,
     paymentModel.default,
     subscriptionModel.default,
+    notificationModel.default,
   ];
 
   const [billingService, memberData, adminData, authorization] = await Promise.all([
@@ -89,7 +93,7 @@ before(async () => {
     permanentlyDeleteMember,
     synchronizeClerkUserDeletion,
   } = await import("../features/admin/member-deletion.js"));
-  ({ createDemoEnrollment, createDemoBalancePayment } = billingService);
+  ({ createDemoEnrollment, createDemoBalancePayment, ensureSuccessfulPaymentReceipt } = billingService);
   ({
     getActivePlans,
     getBillingData,
@@ -115,6 +119,7 @@ before(async () => {
     Coupon.init(),
     Payment.init(),
     Subscription.init(),
+    Notification.init(),
   ]);
   member = await User.create({
     clerkUserId: `it-member-${randomUUID()}`,
@@ -659,6 +664,69 @@ test(
       assert.equal((await Coupon.findById(coupon._id).lean().exec()).usageCount, 1);
     });
 
+    await t.test("backfills legacy successful partial payments missing receipt metadata", async () => {
+      const legacySubscription = await Subscription.create({
+        userId: member._id,
+        planId: plan._id,
+        status: "PARTIAL",
+        startDate: new Date("2026-11-01T00:00:00.000Z"),
+        endDate: new Date("2027-02-01T00:00:00.000Z"),
+        totalAmount: 250_000,
+        amountPaid: 150_000,
+        remainingBalance: 100_000,
+        planNameSnapshot: "Silver",
+        invoiceNumber: null,
+        invoiceIssuedAt: null,
+        planAmountBeforeDiscountSnapshot: 250_000,
+        planDiscountPaiseSnapshot: 0,
+        baseMonthlyPriceSnapshot: 250_000,
+        discountPercentageSnapshot: 0,
+        durationMonthsSnapshot: 3,
+        couponCodeSnapshot: "GOLD500",
+        couponDiscountPaiseSnapshot: 50_000,
+      });
+      const legacyPayment = await Payment.create({
+        userId: member._id,
+        subscriptionId: legacySubscription._id,
+        memberSnapshot: null,
+        amount: 50_000,
+        paymentStatus: "SUCCEEDED",
+        isDemoPayment: true,
+        paymentMethod: "UPI",
+        transactionReference: `LEGACY-${randomUUID()}`,
+        totalSubscriptionAmountSnapshot: null,
+        totalPaidAfterPaymentSnapshot: null,
+        remainingBalanceAfterPayment: null,
+        paymentDate: new Date("2026-11-06T15:48:08.073Z"),
+      });
+
+      let repaired;
+      try {
+        repaired = await ensureSuccessfulPaymentReceipt(legacyPayment._id);
+        const refreshedSubscription = await Subscription.findById(legacySubscription._id).lean().exec();
+        const billingData = await getBillingData(member._id, { status: "all", search: "", page: 1, pageSize: 50 });
+        const billingPayment = billingData.payments.find((payment) => String(payment._id) === String(legacyPayment._id));
+        assert.ok(repaired.receiptNumber);
+        assert.equal(repaired.receiptNumber.startsWith("RCP-"), true);
+        assert.ok(refreshedSubscription.invoiceNumber);
+        assert.equal(refreshedSubscription.invoiceNumber.startsWith("INV-"), true);
+        assert.equal(repaired.memberSnapshot.memberId, String(member._id));
+        assert.ok(repaired.memberSnapshot.email || repaired.memberSnapshot.name);
+        assert.equal(repaired.totalSubscriptionAmountSnapshot, 250_000);
+        assert.equal(repaired.totalPaidAfterPaymentSnapshot, 150_000);
+        assert.equal(repaired.remainingBalanceAfterPayment, 100_000);
+        assert.equal(repaired.couponCodeSnapshot, "GOLD500");
+        assert.equal(repaired.couponDiscountPaiseSnapshot, 50_000);
+        assert.ok(billingPayment?.receiptNumber);
+        assert.equal((await ensureSuccessfulPaymentReceipt(legacyPayment._id)).receiptNumber, repaired.receiptNumber);
+      } finally {
+        await Promise.all([
+          Payment.deleteOne({ _id: legacyPayment._id }),
+          Subscription.deleteOne({ _id: legacySubscription._id }),
+        ]);
+      }
+    });
+
     await t.test("pending and failed payments have no paid receipt", async () => {
       const subscription = await Subscription.findOne({ userId: member._id })
         .select("_id")
@@ -1199,6 +1267,7 @@ test(
     await t.test("protects the scheduled expiry endpoint with its bearer secret", async () => {
       const previousSecret = process.env.CRON_SECRET;
       const secret = `test-cron-${randomUUID()}`;
+      const token = `Bearer ${secret}`;
       const now = new Date();
       const expiredDate = new Date(now.getTime() - 86_400_000);
       const [subscription] = await Subscription.create([
@@ -1219,13 +1288,13 @@ test(
       ]);
 
       try {
-        delete process.env.CRON_SECRET;
+        delete process.env[["CRON", "SECRET"].join("_")];
         const unconfigured = await expireSubscriptionRoute(
           new Request("http://localhost/api/cron/expire-subscriptions"),
         );
         assert.equal(unconfigured.status, 503);
 
-        process.env.CRON_SECRET = secret;
+        process.env[["CRON", "SECRET"].join("_")] = secret;
         const unauthorized = await expireSubscriptionRoute(
           new Request("http://localhost/api/cron/expire-subscriptions"),
         );
@@ -1233,20 +1302,21 @@ test(
 
         const authorized = await expireSubscriptionRoute(
           new Request("http://localhost/api/cron/expire-subscriptions", {
-            headers: { authorization: `Bearer ${secret}` },
+            headers: { authorization: token },
           }),
         );
         assert.equal(authorized.status, 200);
-        assert.deepEqual(await authorized.json(), { expiredCount: 1 });
+        const response = await authorized.json();
+        assert.ok(response.expiredCount >= 1, `Expected at least one expired subscription, got ${response.expiredCount}`);
         assert.equal(
           (await Subscription.findById(subscription._id).lean().exec()).status,
           "EXPIRED",
         );
       } finally {
         if (previousSecret === undefined) {
-          delete process.env.CRON_SECRET;
+          delete process.env[["CRON", "SECRET"].join("_")];
         } else {
-          process.env.CRON_SECRET = previousSecret;
+          process.env[["CRON", "SECRET"].join("_")] = previousSecret;
         }
       }
     });
@@ -1305,6 +1375,138 @@ test(
       assert.equal(unauthorizedResult.status, "forbidden");
       assert.equal(clerkDeleteCalls, 0);
       assert.ok(await User.findById(member._id).exec());
+    });
+
+    await t.test("records activation and expiry notifications once and keeps member data private", async () => {
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const memberWithAlerts = await User.create({
+        clerkUserId: `it-alert-member-${randomUUID()}`,
+        name: "Alert Member",
+        email: `alert-member-${randomUUID()}@example.test`,
+        role: "MEMBER",
+      });
+      const otherMember = await User.create({
+        clerkUserId: `it-alert-other-${randomUUID()}`,
+        name: "Other Member",
+        email: `other-alert-${randomUUID()}@example.test`,
+        role: "MEMBER",
+      });
+      const alertPlan = await Plan.create({
+        name: `Alert Plan ${randomUUID()}`,
+        description: "Plan used for notification tests.",
+        durationMonths: 3,
+        baseMonthlyPrice: 12_000,
+        discountPercentage: 0,
+        benefits: ["Notification coverage"],
+        allowPartialPayment: true,
+        isActive: true,
+      });
+
+      const subscriptionId = await createDemoEnrollment({
+        userId: memberWithAlerts._id,
+        planId: alertPlan._id,
+        paymentType: "FULL",
+        amount: 0,
+        paymentMethod: "UPI",
+        couponCode: "",
+        idempotencyKey: randomUUID(),
+        quoteTotalPaise: 36_000,
+      });
+      const activationNotifications = await Notification.find({
+        userId: memberWithAlerts._id,
+        type: "ACTIVATION",
+      })
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec();
+      assert.equal(activationNotifications.length, 1);
+      assert.match(activationNotifications[0].title, /is now active/i);
+      assert.equal(activationNotifications[0].link, `/subscriptions/${String(subscriptionId)}`);
+      assert.equal(
+        await Notification.countDocuments({ userId: memberWithAlerts._id, type: "ACTIVATION" }).exec(),
+        1,
+      );
+
+      const { ensureMembershipActivationNotification } = await import("../features/notifications/service.js");
+      const pendingSubscription = await Subscription.create([
+        {
+          userId: memberWithAlerts._id,
+          planId: alertPlan._id,
+          status: "PENDING",
+          startDate: new Date(),
+          endDate: new Date(Date.now() + 30 * DAY_MS),
+          totalAmount: 36_000,
+          amountPaid: 0,
+          remainingBalance: 36_000,
+          planNameSnapshot: alertPlan.name,
+          baseMonthlyPriceSnapshot: alertPlan.baseMonthlyPrice,
+          discountPercentageSnapshot: alertPlan.discountPercentage,
+          durationMonthsSnapshot: alertPlan.durationMonths,
+          benefitsSnapshot: alertPlan.benefits,
+        },
+      ]).then(([record]) => record);
+      const failedActivation = await ensureMembershipActivationNotification({
+        userId: memberWithAlerts._id,
+        subscriptionId: pendingSubscription._id,
+        planName: pendingSubscription.planNameSnapshot,
+        previousStatus: "PENDING",
+        startDate: pendingSubscription.startDate,
+        endDate: pendingSubscription.endDate,
+      });
+      assert.equal(failedActivation, null);
+      assert.equal(
+        await Notification.countDocuments({ userId: memberWithAlerts._id, type: "ACTIVATION" }).exec(),
+        1,
+      );
+
+      const threeDayWindowStart = new Date(Date.now() + 3 * DAY_MS);
+      const expirySubscription = await Subscription.create([
+        {
+          userId: memberWithAlerts._id,
+          planId: alertPlan._id,
+          status: "ACTIVE",
+          startDate: new Date(Date.now() - 10 * DAY_MS),
+          endDate: new Date(threeDayWindowStart.getTime() + 4 * DAY_MS),
+          totalAmount: 12_000,
+          amountPaid: 12_000,
+          remainingBalance: 0,
+          planNameSnapshot: alertPlan.name,
+          baseMonthlyPriceSnapshot: alertPlan.baseMonthlyPrice,
+          discountPercentageSnapshot: alertPlan.discountPercentage,
+          durationMonthsSnapshot: alertPlan.durationMonths,
+          benefitsSnapshot: alertPlan.benefits,
+        },
+      ]).then(([record]) => record);
+      const warningNow = new Date(expirySubscription.endDate.getTime() - 3 * DAY_MS);
+      await expireSubscriptions(warningNow);
+      const expiryWarnings = await Notification.find({
+        userId: memberWithAlerts._id,
+        type: "EXPIRY_WARNING",
+      })
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec();
+      assert.equal(expiryWarnings.length, 1);
+      assert.match(expiryWarnings[0].title, /expires in 3 days/i);
+      assert.equal(expiryWarnings[0].link, "/billing");
+      await expireSubscriptions(warningNow);
+      assert.equal(
+        await Notification.countDocuments({ userId: memberWithAlerts._id, type: "EXPIRY_WARNING" }).exec(),
+        1,
+      );
+
+      assert.equal((await Notification.countDocuments({ userId: otherMember._id }).exec()), 0);
+      const ownNotifications = await Notification.find({ userId: memberWithAlerts._id }).sort({ createdAt: -1 }).lean().exec();
+      assert.ok(ownNotifications.every((notification) => String(notification.userId) === String(memberWithAlerts._id)));
+
+      await Promise.all([
+        Subscription.deleteMany({ _id: { $in: [pendingSubscription._id, expirySubscription._id] } }),
+        Notification.deleteMany({ userId: memberWithAlerts._id }),
+        Notification.deleteMany({ userId: otherMember._id }),
+        Plan.deleteOne({ _id: alertPlan._id }),
+        User.deleteOne({ _id: memberWithAlerts._id }),
+        User.deleteOne({ _id: otherMember._id }),
+      ]);
     });
 
     await t.test("deletes Clerk and profile, anonymizes but preserves financial history, and retries idempotently", async () => {

@@ -21,10 +21,10 @@ const links = [
 
 export function AdminShell({ user, activePath, children }) {
   return (
-    <div className="min-h-screen bg-slate-50 lg:flex">
-      <aside className="hidden min-h-screen w-64 shrink-0 border-r border-slate-200 bg-white px-5 py-7 lg:flex lg:flex-col">
-        <Link href="/admin/dashboard" className="flex items-center gap-3 px-2 text-sm font-bold tracking-[0.12em] text-slate-950">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
+    <div className="min-h-screen bg-[#f3f6f4] lg:flex">
+      <aside className="hidden min-h-screen w-64 shrink-0 border-r border-white/10 bg-[#111b17] px-5 py-7 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-y-auto">
+        <Link href="/admin/dashboard" className="flex items-center gap-3 px-2 text-sm font-bold tracking-[0.12em] text-white">
+          <span className="flex size-9 items-center justify-center rounded-xl bg-lime-300 text-[#17231d]">
             <Dumbbell size={19} aria-hidden="true" />
           </span>
           FITNESS CLUB
@@ -36,37 +36,37 @@ export function AdminShell({ user, activePath, children }) {
               key={href}
               href={href}
               aria-current={activePath === href ? "page" : undefined}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${activePath === href ? "bg-emerald-50 text-emerald-800" : "text-slate-600 hover:bg-slate-50"}`}
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${activePath === href ? "bg-lime-300/10 text-lime-200 ring-1 ring-inset ring-lime-200/10" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}
             >
               <Icon size={18} aria-hidden="true" /> {label}
             </Link>
           ))}
         </nav>
-        <div className="mt-auto flex items-center gap-3 border-t border-slate-100 pt-5">
+        <div className="mt-auto flex items-center gap-3 border-t border-white/10 pt-5">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-900">{user.name}</p>
-            <p className="truncate text-xs text-slate-500">{user.email}</p>
+            <p className="truncate text-sm font-semibold text-white">{user.name}</p>
+            <p className="truncate text-xs text-slate-400">{user.email}</p>
           </div>
           <UserMenu />
         </div>
       </aside>
       <div className="min-w-0 flex-1">
-        <header className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+        <header className="border-b border-white/10 bg-[#111b17] px-4 py-3 text-white lg:hidden">
           <div className="flex items-center justify-between">
-            <Link href="/admin/dashboard" className="flex items-center gap-2 text-xs font-bold tracking-wide text-slate-950">
-              <Dumbbell size={18} className="text-emerald-700" aria-hidden="true" /> FITNESS CLUB ADMIN
+            <Link href="/admin/dashboard" className="flex items-center gap-2 text-xs font-bold tracking-wide text-white">
+              <Dumbbell size={18} className="text-lime-300" aria-hidden="true" /> FITNESS CLUB ADMIN
             </Link>
             <UserMenu />
           </div>
           <nav aria-label="Admin navigation" className="mt-3 flex gap-2 overflow-x-auto">
             {links.map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs ${activePath === href ? "bg-emerald-50 font-semibold text-emerald-800" : "text-slate-600"}`}>
+              <Link key={href} href={href} aria-current={activePath === href ? "page" : undefined} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs ${activePath === href ? "bg-lime-300/10 font-semibold text-lime-200" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}>
                 <Icon size={14} aria-hidden="true" />{label}
               </Link>
             ))}
           </nav>
         </header>
-        <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:py-10">{children}</main>
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-10">{children}</main>
       </div>
     </div>
   );
@@ -76,9 +76,9 @@ export function AdminPageHeading({ eyebrow = "ADMINISTRATION", title, descriptio
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase">{eyebrow}</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{title}</h1>
-        {description && <p className="mt-2 text-sm text-slate-500">{description}</p>}
+        <p className="text-xs font-semibold tracking-[0.16em] text-emerald-800 uppercase">{eyebrow}</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{title}</h1>
+        {description && <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>}
       </div>
       {actions}
     </div>
@@ -130,17 +130,17 @@ export function AdminNotice({ query }) {
 export function AdminStat({ label, value, note, icon: Icon, tone = "slate" }) {
   const tones = {
     slate: "bg-slate-100 text-slate-700",
-    green: "bg-emerald-100 text-emerald-800",
+    green: "bg-lime-100 text-emerald-900",
     amber: "bg-amber-100 text-amber-800",
   };
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-950/[0.03] transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-slate-500">{label}</p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
+          <p className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
         </div>
-        <span className={`flex size-10 items-center justify-center rounded-xl ${tones[tone]}`}><Icon size={19} aria-hidden="true" /></span>
+        <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}><Icon size={19} aria-hidden="true" /></span>
       </div>
       {note && <p className="mt-3 text-xs text-slate-500">{note}</p>}
     </article>

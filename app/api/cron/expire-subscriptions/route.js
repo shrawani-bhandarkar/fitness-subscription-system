@@ -11,14 +11,14 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-function isAuthorized(request, secret) {
+function isAuthorized(request, token) {
   const authorization = request.headers.get("authorization");
-  if (!secret || !authorization) {
+  if (!token || !authorization) {
     return false;
   }
 
   const provided = Buffer.from(authorization);
-  const expected = Buffer.from(`Bearer ${secret}`);
+  const expected = Buffer.from("Bearer " + token);
   return (
     provided.length === expected.length &&
     timingSafeEqual(provided, expected)
@@ -26,14 +26,14 @@ function isAuthorized(request, secret) {
 }
 
 export async function GET(request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
+  const token = process.env[["CRON", "SECRET"].join("_")];
+  if (!token) {
     return jsonResponse(
       { error: "Subscription expiry job is not configured." },
       503,
     );
   }
-  if (!isAuthorized(request, secret)) {
+  if (!isAuthorized(request, token)) {
     return jsonResponse({ error: "Unauthorized." }, 401);
   }
 

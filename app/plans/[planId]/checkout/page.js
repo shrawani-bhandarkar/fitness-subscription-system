@@ -133,7 +133,7 @@ export default async function CheckoutPage({ params, searchParams }) {
       : null);
 
   return (
-    <main className="min-h-screen bg-slate-50 px-5 py-8 sm:px-8 lg:py-12">
+    <main className="min-h-screen bg-[#f3f6f4] px-4 py-6 sm:px-8 sm:py-8 lg:py-12">
       <div className="mx-auto max-w-5xl">
         <Link href="/plans" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950">
           <ArrowLeft size={16} aria-hidden="true" /> Back to plans

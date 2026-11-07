@@ -9,6 +9,7 @@ import Plan from "../../models/Plan.js";
 import Subscription from "../../models/Subscription.js";
 import User from "../../models/User.js";
 import { isPositivePaise } from "../../lib/currency.js";
+import { ensureMembershipActivationNotification } from "../notifications/service.js";
 import {
   calculateCouponDiscount,
   calculatePaymentAllocation,
@@ -87,6 +88,165 @@ function makeDocumentNumber(prefix) {
   return `${prefix}-${year}-${randomUUID().replaceAll("-", "").slice(0, 16).toUpperCase()}`;
 }
 
+async function ensureSubscriptionInvoiceRecord(subscriptionId, payment, session = null) {
+  if (!subscriptionId) {
+    return null;
+  }
+
+  const subscription = await Subscription.findById(subscriptionId)
+    .select("invoiceNumber invoiceIssuedAt")
+    .session(session)
+    .exec();
+
+  if (!subscription) {
+    return null;
+  }
+
+  if (subscription.invoiceNumber && subscription.invoiceIssuedAt) {
+    return subscription;
+  }
+
+  const invoiceNumber = subscription.invoiceNumber ?? makeDocumentNumber("INV");
+  const invoiceIssuedAt = subscription.invoiceIssuedAt ?? payment.paymentDate ?? payment.createdAt ?? new Date();
+
+  const updated = await Subscription.findOneAndUpdate(
+    {
+      _id: subscription._id,
+      $or: [
+        { invoiceNumber: { $exists: false } },
+        { invoiceNumber: null },
+        { invoiceIssuedAt: { $exists: false } },
+        { invoiceIssuedAt: null },
+      ],
+    },
+    {
+      $set: {
+        invoiceNumber,
+        invoiceIssuedAt,
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+      session,
+    },
+  ).exec();
+
+  return updated ?? subscription;
+}
+
+export async function ensureSuccessfulPaymentReceipt(paymentId, session = null) {
+  await connectToDatabase();
+  await Payment.init();
+
+  const payment = await Payment.findOne({
+    _id: paymentId,
+    paymentStatus: "SUCCEEDED",
+  })
+    .session(session)
+    .exec();
+
+  if (!payment) {
+    return null;
+  }
+
+  if (payment.subscriptionId) {
+    await ensureSubscriptionInvoiceRecord(payment.subscriptionId, payment, session);
+  }
+
+  const subscription = await Subscription.findById(payment.subscriptionId)
+    .select(
+      "userId totalAmount amountPaid remainingBalance invoiceNumber invoiceIssuedAt planNameSnapshot durationMonthsSnapshot planAmountBeforeDiscountSnapshot planDiscountPaiseSnapshot couponCodeSnapshot couponDiscountPaiseSnapshot baseMonthlyPriceSnapshot discountPercentageSnapshot benefitsSnapshot",
+    )
+    .session(session)
+    .lean()
+    .exec();
+
+  if (subscription && (!subscription.invoiceNumber || !subscription.invoiceIssuedAt)) {
+    const invoiceUpdated = await ensureSubscriptionInvoiceRecord(
+      subscription._id,
+      payment,
+      session,
+    );
+    if (invoiceUpdated) {
+      subscription.invoiceNumber = invoiceUpdated.invoiceNumber ?? subscription.invoiceNumber;
+      subscription.invoiceIssuedAt = invoiceUpdated.invoiceIssuedAt ?? subscription.invoiceIssuedAt;
+    }
+  }
+  const readySubscription = subscription;
+
+  const member = payment.userId
+    ? await User.findById(payment.userId)
+        .select("name email")
+        .session(session)
+        .lean()
+        .exec()
+    : null;
+
+  const memberSnapshot =
+    payment.memberSnapshot &&
+    (payment.memberSnapshot.memberId || payment.memberSnapshot.name || payment.memberSnapshot.email)
+      ? payment.memberSnapshot
+      : {
+          memberId: payment.userId ? String(payment.userId) : payment.memberReference ?? null,
+          name: member?.name ?? null,
+          email: member?.email ?? null,
+        };
+  const receiptNumber = payment.receiptNumber ?? makeDocumentNumber("RCP");
+  const hasPersistedReceipt = payment.receiptNumber != null;
+  const couponCodeSnapshot = hasPersistedReceipt
+    ? payment.couponCodeSnapshot ?? null
+    : payment.couponCodeSnapshot || readySubscription?.couponCodeSnapshot || null;
+  const couponDiscountPaiseSnapshot = hasPersistedReceipt
+    ? payment.couponDiscountPaiseSnapshot ?? 0
+    : payment.couponDiscountPaiseSnapshot > 0
+      ? payment.couponDiscountPaiseSnapshot
+      : readySubscription?.couponDiscountPaiseSnapshot ?? 0;
+  const snapshot = {
+    receiptNumber,
+    receiptIssuedAt: payment.receiptIssuedAt ?? payment.paymentDate ?? payment.createdAt ?? new Date(),
+    totalSubscriptionAmountSnapshot:
+      payment.totalSubscriptionAmountSnapshot ?? readySubscription?.totalAmount ?? null,
+    totalPaidAfterPaymentSnapshot:
+      payment.totalPaidAfterPaymentSnapshot ?? readySubscription?.amountPaid ?? payment.amount ?? null,
+    remainingBalanceAfterPayment:
+      payment.remainingBalanceAfterPayment ?? readySubscription?.remainingBalance ?? 0,
+    couponCodeSnapshot,
+    couponDiscountPaiseSnapshot,
+    memberSnapshot,
+  };
+
+  const shouldPatch =
+    !payment.receiptNumber ||
+    !payment.receiptIssuedAt ||
+    payment.totalSubscriptionAmountSnapshot == null ||
+    payment.totalPaidAfterPaymentSnapshot == null ||
+    payment.remainingBalanceAfterPayment == null ||
+    !payment.memberSnapshot ||
+    !payment.memberSnapshot.memberId ||
+    payment.couponCodeSnapshot == null ||
+    payment.couponDiscountPaiseSnapshot == null;
+
+  if (!shouldPatch) {
+    return payment;
+  }
+
+  const updated = await Payment.findOneAndUpdate(
+    {
+      _id: payment._id,
+      paymentStatus: "SUCCEEDED",
+    },
+    { $set: snapshot },
+    {
+      new: true,
+      runValidators: true,
+      session,
+    },
+  ).exec();
+
+  return updated ?? payment;
+}
+
 async function getMemberSnapshot(userId, session) {
   const member = await User.findById(userId)
     .select("name email")
@@ -149,6 +309,7 @@ export async function createDemoEnrollment({
   });
   const session = await mongoose.startSession();
   let subscriptionId;
+  let activationPayload = null;
 
   try {
     await session.withTransaction(async () => {
@@ -227,7 +388,7 @@ export async function createDemoEnrollment({
         { session },
       );
 
-      await Payment.create(
+      const [createdPayment] = await Payment.create(
         [
           {
             userId,
@@ -252,8 +413,19 @@ export async function createDemoEnrollment({
         ],
         { session },
       );
+      await ensureSuccessfulPaymentReceipt(createdPayment._id, session);
       await claimCoupon(coupon, session);
       subscriptionId = subscription._id;
+      if (status === "ACTIVE") {
+        activationPayload = {
+          userId,
+          subscriptionId: subscription._id,
+          planName: subscription.planNameSnapshot,
+          previousStatus: null,
+          startDate: subscription.startDate,
+          endDate: subscription.endDate,
+        };
+      }
     });
   } catch (error) {
     if (error?.code === 11000) {
@@ -269,6 +441,10 @@ export async function createDemoEnrollment({
     throw error;
   } finally {
     await session.endSession();
+  }
+
+  if (activationPayload) {
+    await ensureMembershipActivationNotification(activationPayload);
   }
 
   return subscriptionId;
@@ -292,6 +468,7 @@ export async function createDemoBalancePayment({
   });
   const session = await mongoose.startSession();
   let updatedSubscriptionId;
+  let activationPayload = null;
 
   try {
     await session.withTransaction(async () => {
@@ -325,6 +502,7 @@ export async function createDemoBalancePayment({
         throw new Error("The payment must be within the outstanding balance.");
       }
 
+      const previousStatus = subscription.status;
       const remainingBalance = subscription.remainingBalance - amount;
       const memberSnapshot = await getMemberSnapshot(userId, session);
       subscription.amountPaid += amount;
@@ -340,8 +518,18 @@ export async function createDemoBalancePayment({
           ? null
           : subscription.nextPaymentDueDate ?? addMonths(new Date(), 1);
       await subscription.save({ session });
+      if (subscription.status === "ACTIVE" && previousStatus !== "ACTIVE") {
+        activationPayload = {
+          userId,
+          subscriptionId: subscription._id,
+          planName: subscription.planNameSnapshot,
+          previousStatus,
+          startDate: subscription.startDate,
+          endDate: subscription.endDate,
+        };
+      }
 
-      await Payment.create(
+      const [createdPayment] = await Payment.create(
         [
           {
             userId,
@@ -364,6 +552,7 @@ export async function createDemoBalancePayment({
         ],
         { session },
       );
+      await ensureSuccessfulPaymentReceipt(createdPayment._id, session);
       updatedSubscriptionId = subscription._id;
     });
   } catch (error) {
@@ -380,6 +569,10 @@ export async function createDemoBalancePayment({
     throw error;
   } finally {
     await session.endSession();
+  }
+
+  if (activationPayload) {
+    await ensureMembershipActivationNotification(activationPayload);
   }
 
   return updatedSubscriptionId;

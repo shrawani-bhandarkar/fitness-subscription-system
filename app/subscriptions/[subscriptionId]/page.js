@@ -34,7 +34,7 @@ export default async function MemberSubscriptionDetailsPage({ params }) {
     discountPercentage: subscription.discountPercentageSnapshot,
   });
   return (
-    <div className="min-h-screen bg-slate-50 lg:flex">
+    <div className="min-h-screen bg-[#f3f6f4] lg:flex">
       <MemberSidebar user={user} activePath="/subscriptions" />
       <main className="min-w-0 flex-1">
         <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 lg:py-10">

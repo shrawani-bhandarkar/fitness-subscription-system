@@ -8,6 +8,7 @@ import Subscription from "../../models/Subscription.js";
 import {
   getPaymentDisplayStatus as getPaymentDisplayStatusValue,
 } from "../billing/payment-status.mjs";
+import { ensureSuccessfulPaymentReceipt } from "../billing/service.js";
 
 async function getAccountTotals(userId) {
   const [paymentTotals, subscriptionTotals] = await Promise.all([
@@ -164,7 +165,15 @@ async function getUserPayments(
     pipeline.push({ $limit: limit });
   }
 
-  return Payment.aggregate(pipeline).exec();
+  const payments = await Payment.aggregate(pipeline).exec();
+  await Promise.all(
+    payments
+      .filter((payment) => payment.paymentStatus === "SUCCEEDED" && !payment.receiptNumber)
+      .map((payment) => ensureSuccessfulPaymentReceipt(payment._id)),
+  );
+
+  const refreshedPayments = await Payment.aggregate(pipeline).exec();
+  return refreshedPayments;
 }
 
 export async function getActivePlans(limit = 0) {
@@ -229,7 +238,21 @@ export async function getMemberSubscriptionDetails(userId, subscriptionId) {
     .lean()
     .exec();
 
-  return { subscription, payments };
+  await Promise.all(
+    payments
+      .filter((payment) => payment.paymentStatus === "SUCCEEDED" && !payment.receiptNumber)
+      .map((payment) => ensureSuccessfulPaymentReceipt(payment._id)),
+  );
+
+  const refreshedPayments = await Payment.find({
+    subscriptionId: subscription._id,
+    userId,
+  })
+    .sort({ paymentDate: -1, createdAt: -1 })
+    .lean()
+    .exec();
+
+  return { subscription, payments: refreshedPayments };
 }
 
 export async function getMemberDashboardData(userId) {
